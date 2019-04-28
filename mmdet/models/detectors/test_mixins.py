@@ -151,3 +151,102 @@ class MaskTestMixin(object):
                 scale_factor=1.0,
                 rescale=False)
         return segm_result
+
+
+# dingguo
+class SegTestMixin(object):
+
+    def simple_test_seg(self,
+                        x,
+                        img_meta,
+                        rescale=False):
+        ori_shape = img_meta[0]['ori_shape']
+        img_shape = img_meta[0]['img_shape']
+        scale_factor = img_meta[0]['scale_factor']
+        seg_pred = self.seg_head(x)
+
+        segm_result = self.seg_head.get_seg_masks(
+            seg_pred, self.test_cfg.rcnn, ori_shape,
+            img_shape, scale_factor, rescale)
+        return segm_result
+
+    def aug_test_seg(self, feats, img_metas, det_bboxes, det_labels):
+        if det_bboxes.shape[0] == 0:
+            segm_result = [[] for _ in range(self.mask_head.num_classes - 1)]
+        else:
+            aug_masks = []
+            for x, img_meta in zip(feats, img_metas):
+                img_shape = img_meta[0]['img_shape']
+                scale_factor = img_meta[0]['scale_factor']
+                flip = img_meta[0]['flip']
+                _bboxes = bbox_mapping(det_bboxes[:, :4], img_shape,
+                                       scale_factor, flip)
+                mask_rois = bbox2roi([_bboxes])
+                mask_feats = self.mask_roi_extractor(
+                    x[:len(self.mask_roi_extractor.featmap_strides)],
+                    mask_rois)
+                mask_pred = self.mask_head(mask_feats)
+                # convert to numpy array to save memory
+                aug_masks.append(mask_pred.sigmoid().cpu().numpy())
+            merged_masks = merge_aug_masks(aug_masks, img_metas,
+                                           self.test_cfg.rcnn)
+
+            ori_shape = img_metas[0][0]['ori_shape']
+            segm_result = self.mask_head.get_seg_masks(
+                merged_masks,
+                det_bboxes,
+                det_labels,
+                self.test_cfg.rcnn,
+                ori_shape,
+                scale_factor=1.0,
+                rescale=False)
+        return segm_result
+
+
+# dingguo
+class PanopticTestMixin(object):
+
+    def simple_test_panoptic(self,
+                             x,
+                             img_meta,
+                             rescale=False):
+        ori_shape = img_meta[0]['ori_shape']
+        scale_factor = img_meta[0]['scale_factor']
+        seg_pred = self.seg_head(x)
+
+        segm_result = self.seg_head.get_seg_masks(
+            seg_pred, self.test_cfg.rcnn, ori_shape,
+            scale_factor, rescale)
+        return segm_result
+
+    def aug_test_seg(self, feats, img_metas, det_bboxes, det_labels):
+        if det_bboxes.shape[0] == 0:
+            segm_result = [[] for _ in range(self.mask_head.num_classes - 1)]
+        else:
+            aug_masks = []
+            for x, img_meta in zip(feats, img_metas):
+                img_shape = img_meta[0]['img_shape']
+                scale_factor = img_meta[0]['scale_factor']
+                flip = img_meta[0]['flip']
+                _bboxes = bbox_mapping(det_bboxes[:, :4], img_shape,
+                                       scale_factor, flip)
+                mask_rois = bbox2roi([_bboxes])
+                mask_feats = self.mask_roi_extractor(
+                    x[:len(self.mask_roi_extractor.featmap_strides)],
+                    mask_rois)
+                mask_pred = self.mask_head(mask_feats)
+                # convert to numpy array to save memory
+                aug_masks.append(mask_pred.sigmoid().cpu().numpy())
+            merged_masks = merge_aug_masks(aug_masks, img_metas,
+                                           self.test_cfg.rcnn)
+
+            ori_shape = img_metas[0][0]['ori_shape']
+            segm_result = self.mask_head.get_seg_masks(
+                merged_masks,
+                det_bboxes,
+                det_labels,
+                self.test_cfg.rcnn,
+                ori_shape,
+                scale_factor=1.0,
+                rescale = False)
+        return segm_result

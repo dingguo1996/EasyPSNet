@@ -1,0 +1,4 @@
+python init_coco.py
+
+PYTHONPATH=$(pwd):$PYTHONPATH python panopticapi/converters/panoptic2semantic_segmentation.py --input_json_file data/coco/annotations/panoptic_train2017_Easystuff.json --segmentations_folder data/coco/annotations/panoptic_train2017 --semantic_seg_folder data/coco/annotations/panoptic_train2017_semantic_Easystuff --categories_json_file data/coco/annotations/panoptic_coco_categories_Easystuff.json
+PYTHONPATH=$(pwd):$PYTHONPATH python panopticapi/converters/panoptic2semantic_segmentation.py --input_json_file data/coco/annotations/panoptic_val2017_Easystuff.json --segmentations_folder data/coco/annotations/panoptic_val2017 --semantic_seg_folder data/coco/annotations/panoptic_val2017_semantic_Easystuff --categories_json_file data/coco/annotations/panoptic_coco_categories_Easystuff.json

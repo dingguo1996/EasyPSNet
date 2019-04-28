@@ -10,6 +10,10 @@ from mmdet.core import results2json, coco_eval
 from mmdet.datasets import build_dataloader
 from mmdet.models import build_detector, detectors
 
+from tools.panoptic_evaluate import combine_predictions
+import logging
+import os
+
 
 def single_test(model, data_loader, show=False):
     model.eval()
@@ -36,6 +40,20 @@ def _data_func(data, device_id):
     return dict(return_loss=False, rescale=True, **data)
 
 
+def logger_init(path):
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level=logging.INFO)
+    handler = logging.FileHandler(path + "/panoptic_evaluatelog.txt")
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    logger.addHandler(console)
+    return logger
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test detector')
     parser.add_argument('config', help='test config file path')
@@ -52,9 +70,17 @@ def parse_args():
         '--eval',
         type=str,
         nargs='+',
-        choices=['proposal', 'proposal_fast', 'bbox', 'segm', 'keypoints'],
+        choices=['proposal', 'proposal_fast', 'bbox', 'segm', 'keypoints', 'panoptic'],
         help='eval types')
     parser.add_argument('--show', action='store_true', help='show results')
+
+    parser.add_argument('--confidence_thr', type=float, default=0.5,
+                        help="Predicted segments with smaller confidences than the threshold are filtered out")
+    parser.add_argument('--overlap_thr', type=float, default=0.5,
+                        help="Segments that have higher that the threshold ratio of \
+                               their area being overlapped by segments with higher confidence are filtered out")
+    parser.add_argument('--stuff_area_limit', type=float, default=64 * 64,
+                        help="Stuff segments with area smaller that the limit are filtered out")
     args = parser.parse_args()
     return args
 
@@ -101,6 +127,10 @@ def main():
             workers_per_gpu=args.proc_per_gpu)
 
     if args.out:
+        result_root = os.path.dirname(args.out)
+        if not os.path.exists(result_root):
+            os.mkdir(result_root)
+
         print('writing results to {}'.format(args.out))
         mmcv.dump(outputs, args.out)
         eval_types = args.eval
@@ -109,6 +139,33 @@ def main():
             if eval_types == ['proposal_fast']:
                 result_file = args.out
                 coco_eval(result_file, eval_types, dataset.coco)
+            elif 'panoptic' in eval_types:
+                category_json_path = '../panopticapi/panoptic_coco_categories.json'
+                cat_data = mmcv.load(category_json_path)
+                if not isinstance(outputs[0], dict):
+                    result_file = args.out + '.json'
+                    results2json(dataset, outputs, result_file, cat_data)  # dingguo
+                    coco_eval(result_file, eval_types, dataset.coco)
+                else:
+                    for name in outputs[0]:
+                        print('\nEvaluating {}'.format(name))
+                        outputs_ = [out[name] for out in outputs]
+                        result_file = args.out + '.{}.json'.format(name)
+                        results2json(dataset, outputs_, result_file, cat_data)  # dingguo
+                        coco_eval(result_file, eval_types, dataset.coco)
+
+                # evaluate panoptic
+                logger = logger_init(result_root)
+                combine_predictions(os.path.join(result_root, 'result_siting_seg.json'),
+                                    result_file,
+                                    cfg.data.test['ann_file'].replace('instances', 'panoptic'),
+                                    category_json_path,
+                                    os.path.join(result_root, 'seg_result'),
+                                    os.path.join(result_root, 'panoptic_result.json'),
+                                    cfg.data.test['ann_pan_file'].split('_semantic')[0],
+                                    args.confidence_thr,
+                                    args.overlap_thr,
+                                    args.stuff_area_limit, logger)
             else:
                 if not isinstance(outputs[0], dict):
                     result_file = args.out + '.json'

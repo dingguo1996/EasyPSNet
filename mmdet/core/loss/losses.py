@@ -76,6 +76,9 @@ def mask_cross_entropy(pred, target, label):
     return F.binary_cross_entropy_with_logits(
         pred_slice, target, reduction='mean')[None]
 
+def seg_cross_entropy(pred, target):
+    target = torch.LongTensor(target).cuda()
+    return F.cross_entropy(pred,target,reduction='mean')
 
 def smooth_l1_loss(pred, target, beta=1.0, reduction='mean'):
     assert beta > 0

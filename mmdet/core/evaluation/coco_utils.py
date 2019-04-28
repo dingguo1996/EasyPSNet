@@ -5,11 +5,22 @@ from pycocotools.cocoeval import COCOeval
 
 from .recall import eval_recalls
 
+import pycocotools.mask as mask_util
+import json #dingguo
+import os
+class MyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, bytes):
+            return str(obj, encoding='utf-8');
+        return json.JSONEncoder.default(self, obj)
+
 
 def coco_eval(result_file, result_types, coco, max_dets=(100, 300, 1000)):
     for res_type in result_types:
         assert res_type in [
-            'proposal', 'proposal_fast', 'bbox', 'segm', 'keypoints'
+            'proposal', 'proposal_fast', 'bbox', 'segm', 'keypoints', 'panoptic'
         ]
 
     if mmcv.is_str(coco):
@@ -27,6 +38,8 @@ def coco_eval(result_file, result_types, coco, max_dets=(100, 300, 1000)):
 
     img_ids = coco.getImgIds()
     for res_type in result_types:
+        if res_type=='panoptic':
+            continue
         iou_type = 'bbox' if res_type == 'proposal' else res_type
         cocoEval = COCOeval(coco, coco_dets, iou_type)
         cocoEval.params.imgIds = img_ids
@@ -136,14 +149,60 @@ def segm2json(dataset, results):
                 json_results.append(data)
     return json_results
 
+def panoptic2json(dataset, results, cat_data):
+    json_results = []
+    seg_fcn_results = []
+    for idx in range(len(dataset)):
+        img_id = dataset.img_ids[idx]
+        det, seg, seg_fcn = results[idx] #dingguo
+        for label in range(len(det)):
+            bboxes = det[label]
+            segms = seg[label]
+            for i in range(bboxes.shape[0]):
+                data = dict()
+                data['image_id'] = img_id
+                data['bbox'] = xyxy2xywh(bboxes[i])
+                data['score'] = float(bboxes[i][4])
+                data['category_id'] = dataset.cat_ids[label]
+                segms[i]['counts'] = segms[i]['counts'].decode()
+                data['segmentation'] = segms[i]
+                json_results.append(data)
 
-def results2json(dataset, results, out_file):
+        cat_dict = {}
+
+        for cat_idx, cat_entry in enumerate(cat_data):
+            cat_dict[cat_idx] = cat_entry['id']
+
+
+        unique_category_id = np.unique(seg_fcn)
+        for i in (unique_category_id):
+            new_dict = {}
+            binary_mask = np.zeros(seg_fcn.shape, dtype=np.uint8)
+            position = np.where(seg_fcn == i)
+            binary_mask[position[0], position[1]] = 1
+            binary_mask = np.asfortranarray(binary_mask)
+            pre_binary_mask = mask_util.encode(binary_mask)
+            new_dict['image_id'] = img_id
+            new_dict['segmentation'] = pre_binary_mask
+            new_dict['category_id'] = cat_dict[i]
+            seg_fcn_results.append(new_dict)
+
+    return json_results, seg_fcn_results
+
+
+def results2json(dataset, results, out_file, cat_data=None):
     if isinstance(results[0], list):
         json_results = det2json(dataset, results)
-    elif isinstance(results[0], tuple):
+    elif isinstance(results[0], tuple ) and len(results[0])==2:
         json_results = segm2json(dataset, results)
     elif isinstance(results[0], np.ndarray):
         json_results = proposal2json(dataset, results)
+    elif isinstance(results[0], tuple) and len(results[0])>2:#dingguo
+        json_results, seg_fcn_results = panoptic2json(dataset, results, cat_data)
+        segjson_save_path = os.path.join(os.path.dirname(out_file), 'result_siting_seg.json')
+        save_file = open(segjson_save_path, 'w')
+        json.dump(seg_fcn_results, save_file, cls=MyEncoder)
     else:
         raise TypeError('invalid type of results')
+
     mmcv.dump(json_results, out_file)

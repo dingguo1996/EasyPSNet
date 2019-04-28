@@ -81,9 +81,13 @@ def get_dataset(data_cfg):
 
     if isinstance(data_cfg['ann_file'], (list, tuple)):
         ann_files = data_cfg['ann_file']
+        if 'ann_pan_file' in data_cfg.keys():
+            ann_pan_files = data_cfg['ann_pan_file']
         num_dset = len(ann_files)
     else:
         ann_files = [data_cfg['ann_file']]
+        if 'ann_pan_file' in data_cfg.keys():
+            ann_pan_files = [data_cfg['ann_pan_file']]
         num_dset = 1
 
     if 'proposal_file' in data_cfg.keys():
@@ -107,6 +111,8 @@ def get_dataset(data_cfg):
         data_info['ann_file'] = ann_files[i]
         data_info['proposal_file'] = proposal_files[i]
         data_info['img_prefix'] = img_prefixes[i]
+        if 'ann_pan_file' in data_cfg.keys():
+            data_info['ann_pan_file'] = ann_pan_files[i]
         dset = obj_from_dict(data_info, datasets)
         dsets.append(dset)
     if len(dsets) > 1:
