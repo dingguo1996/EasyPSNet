@@ -216,6 +216,9 @@ class TwoStagePanoticDetector(BaseDetector, RPNTestMixin, BBoxTestMixin,
         if self.with_mask:
             segm_results = self.aug_test_mask(
                 self.extract_feats(imgs), img_metas, det_bboxes, det_labels)
-            return bbox_results, segm_results
+            seg_results = self.aug_test_seg(
+                self.extract_feats(imgs), img_metas)
+
+            return bbox_results, segm_results, seg_results
         else:
             return bbox_results

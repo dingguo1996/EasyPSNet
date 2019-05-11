@@ -1,6 +1,7 @@
 from mmdet.core import (bbox2roi, bbox_mapping, merge_aug_proposals,
-                        merge_aug_bboxes, merge_aug_masks, multiclass_nms)
-
+                        merge_aug_bboxes, merge_aug_masks, multiclass_nms, merge_aug_segs)
+import torch.nn.functional as F
+import torch
 
 class RPNTestMixin(object):
 
@@ -169,84 +170,31 @@ class SegTestMixin(object):
             seg_pred, self.test_cfg.rcnn, ori_shape,
             img_shape, scale_factor, rescale)
         return segm_result
+    #dingguo
+    def aug_test_seg(self, feats, img_metas):
 
-    def aug_test_seg(self, feats, img_metas, det_bboxes, det_labels):
-        if det_bboxes.shape[0] == 0:
-            segm_result = [[] for _ in range(self.mask_head.num_classes - 1)]
-        else:
-            aug_masks = []
-            for x, img_meta in zip(feats, img_metas):
-                img_shape = img_meta[0]['img_shape']
-                scale_factor = img_meta[0]['scale_factor']
-                flip = img_meta[0]['flip']
-                _bboxes = bbox_mapping(det_bboxes[:, :4], img_shape,
-                                       scale_factor, flip)
-                mask_rois = bbox2roi([_bboxes])
-                mask_feats = self.mask_roi_extractor(
-                    x[:len(self.mask_roi_extractor.featmap_strides)],
-                    mask_rois)
-                mask_pred = self.mask_head(mask_feats)
-                # convert to numpy array to save memory
-                aug_masks.append(mask_pred.sigmoid().cpu().numpy())
-            merged_masks = merge_aug_masks(aug_masks, img_metas,
-                                           self.test_cfg.rcnn)
+        aug_segs = []
+        ori_shape_pred = img_metas[0][0]['ori_shape']
+        img_shape_pred = img_metas[0][0]['img_shape']
 
-            ori_shape = img_metas[0][0]['ori_shape']
-            segm_result = self.mask_head.get_seg_masks(
-                merged_masks,
-                det_bboxes,
-                det_labels,
-                self.test_cfg.rcnn,
-                ori_shape,
-                scale_factor=1.0,
-                rescale=False)
-        return segm_result
+        for x, img_meta in zip(feats, img_metas):
+            ori_shape = img_meta[0]['ori_shape']
+            img_shape = img_meta[0]['img_shape']
+            scale_factor = img_meta[0]['scale_factor']
+            seg_pred = self.seg_head(x)
+            seg_pred = F.interpolate(seg_pred, img_shape_pred[:2], mode='bilinear')
 
-
-# dingguo
-class PanopticTestMixin(object):
-
-    def simple_test_panoptic(self,
-                             x,
-                             img_meta,
-                             rescale=False):
-        ori_shape = img_meta[0]['ori_shape']
-        scale_factor = img_meta[0]['scale_factor']
-        seg_pred = self.seg_head(x)
-
+            # convert to numpy array to save memory
+            aug_segs.append(seg_pred.sigmoid().cpu().numpy())
+        merged_segs = merge_aug_segs(aug_segs, img_metas,
+                                       self.test_cfg.rcnn)
+        merged_segs = torch.from_numpy(merged_segs)
         segm_result = self.seg_head.get_seg_masks(
-            seg_pred, self.test_cfg.rcnn, ori_shape,
-            scale_factor, rescale)
-        return segm_result
+            merged_segs,
+            self.test_cfg.rcnn,
+            ori_shape_pred,
+            img_shape_pred,
+            scale_factor=1.0,
+            rescale=False)
 
-    def aug_test_seg(self, feats, img_metas, det_bboxes, det_labels):
-        if det_bboxes.shape[0] == 0:
-            segm_result = [[] for _ in range(self.mask_head.num_classes - 1)]
-        else:
-            aug_masks = []
-            for x, img_meta in zip(feats, img_metas):
-                img_shape = img_meta[0]['img_shape']
-                scale_factor = img_meta[0]['scale_factor']
-                flip = img_meta[0]['flip']
-                _bboxes = bbox_mapping(det_bboxes[:, :4], img_shape,
-                                       scale_factor, flip)
-                mask_rois = bbox2roi([_bboxes])
-                mask_feats = self.mask_roi_extractor(
-                    x[:len(self.mask_roi_extractor.featmap_strides)],
-                    mask_rois)
-                mask_pred = self.mask_head(mask_feats)
-                # convert to numpy array to save memory
-                aug_masks.append(mask_pred.sigmoid().cpu().numpy())
-            merged_masks = merge_aug_masks(aug_masks, img_metas,
-                                           self.test_cfg.rcnn)
-
-            ori_shape = img_metas[0][0]['ori_shape']
-            segm_result = self.mask_head.get_seg_masks(
-                merged_masks,
-                det_bboxes,
-                det_labels,
-                self.test_cfg.rcnn,
-                ori_shape,
-                scale_factor=1.0,
-                rescale = False)
         return segm_result

@@ -94,3 +94,25 @@ def merge_aug_masks(aug_masks, img_metas, rcnn_test_cfg, weights=None):
         merged_masks = np.average(
             np.array(recovered_masks), axis=0, weights=np.array(weights))
     return merged_masks
+
+
+def merge_aug_segs(aug_segs, img_metas, rcnn_test_cfg, weights=None):
+    """Merge augmented mask prediction.
+
+    Args:
+        aug_segs (list[ndarray]): shape (n, #class, h, w)
+        rcnn_test_cfg (dict): rcnn test config.
+
+    Returns:
+        tuple: (segs, scores)
+    """
+    recovered_segs = [
+        seg if not img_info[0]['flip'] else seg[..., ::-1]
+        for seg, img_info in zip(aug_segs, img_metas)
+    ]
+    if weights is None:
+        merged_segs = np.mean(recovered_segs, axis=0)
+    else:
+        merged_segs = np.average(
+            np.array(recovered_segs), axis=0, weights=np.array(weights))
+    return merged_segs
