@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from ..registry import HEADS
 from ..utils import ConvModule
-from mmdet.core import mask_cross_entropy, mask_target, seg_cross_entropy
+from mmdet.core import seg_cross_entropy
 
 
 @HEADS.register_module
@@ -60,11 +60,14 @@ class FCNSegHead(nn.Module):
             self.upsamples = None
         elif self.upsample_method == 'deconv':
             self.upsample = True
-            self.upsamples = nn.ConvTranspose2d(
-                self.conv_out_channels,
-                self.conv_out_channels,
-                self.upsample_ratio,
-                stride=self.upsample_ratio)
+            for i in range(self.num_convs):
+                self.upsamples .append(
+                        nn.ConvTranspose2d(
+                        self.conv_out_channels,
+                        self.conv_out_channels,
+                        self.upsample_ratio**i,
+                        stride=self.upsample_ratio**i)
+                )
         else:
             self.upsample = True
             self.upsamples = None
@@ -91,7 +94,7 @@ class FCNSegHead(nn.Module):
             for i, upsample in enumerate(self.upsamples):
                 if self.upsample_method == 'deconv':
                     upsample_feats.append(upsample(conv_feats[i]))
-                    x[i] = self.relu(x[i])
+                    upsample_feats[i] = self.relu(upsample_feats[i])
         elif self.upsample is True and self.upsamples is None:
             for i in range(self.num_convs):
                 upsample_feats.append(F.interpolate(conv_feats[i],
@@ -104,7 +107,7 @@ class FCNSegHead(nn.Module):
                 seg_feat=upsample_feats[0]
             else:
                 seg_feat=seg_feat+upsample_feats[i]
-        seg_feat=F.interpolate(seg_feat,scale_factor=4,mode=self.upsample_method)
+        seg_feat=F.interpolate(seg_feat,scale_factor=4,mode='bilinear')
         seg_pred = self.conv_logits(seg_feat)
         return seg_pred
 
