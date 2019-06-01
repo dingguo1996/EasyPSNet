@@ -36,7 +36,7 @@ class FCNSegHead(nn.Module):
         self.conv_out_channels = conv_out_channels
         self.upsample_method = upsample_method
         self.upsample_ratio = upsample_ratio
-        self.num_classes = 133#dinggguo
+        self.num_classes = num_classes
         self.class_agnostic = class_agnostic
         self.normalize = normalize
         self.with_bias = normalize is None
